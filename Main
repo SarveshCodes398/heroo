@@ -1,0 +1,84 @@
+import os
+import json
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+load_dotenv()
+
+app = FastAPI(title="Sales Coach AI", version="1.0.0")
+
+# Allow all origins for local dev — restrict in production
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY not set. Please check your .env file.")
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+SYSTEM_PROMPT = """
+You are an expert sales coach AI. Analyze the provided meeting transcript.
+Identify key signals: buying_interest, objections, or confusion.
+For each signal, extract the exact quote and provide an actionable, one-line coaching tip.
+
+You must output valid JSON matching this schema:
+{
+  "signals": [
+    {
+      "type": "buying_interest" | "objection" | "confusion",
+      "quote": "string",
+      "tip": "string"
+    }
+  ]
+}
+Do not include markdown formatting like ```json or any conversational text. Just pure JSON.
+"""
+
+
+class TranscriptRequest(BaseModel):
+    transcript: str
+
+
+@app.post("/analyse")
+async def analyse_transcript(request: TranscriptRequest):
+    if not request.transcript.strip():
+        raise HTTPException(status_code=400, detail="Transcript cannot be empty.")
+
+    try:
+        model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash",
+            system_instruction=SYSTEM_PROMPT,
+        )
+
+        response = model.generate_content(request.transcript)
+        raw_text = response.text.strip()
+
+        # Strip markdown fences if model adds them anyway
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("\n", 1)[-1]
+            raw_text = raw_text.rsplit("```", 1)[0].strip()
+
+        result = json.loads(raw_text)
+        return result
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Model returned invalid JSON: {str(e)}",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
