@@ -1,7 +1,5 @@
 # 🎯 SalesCoach AI — Transcript Analyzer
 
-> Paste a sales call transcript. Get instant AI-powered coaching signals — buying interest, objections, and confusion — with actionable one-line tips.
-
 Built with **FastAPI** (Python backend) + **Google Gemini API** (LLM analysis) + **Tailwind CSS** (frontend).
 
 ---
@@ -45,14 +43,6 @@ sales-coach-ai/
 
 ---
 
-### 1 — Clone the repository
-
-```bash
-git clone https://github.com/your-username/sales-coach-ai.git
-cd sales-coach-ai
-```
-
----
 
 ### 2 — Set up the Python virtual environment
 
@@ -93,7 +83,6 @@ Open `backend/.env` in any text editor and add your key:
 GEMINI_API_KEY=your_actual_gemini_api_key_here
 ```
 
-> ⚠️ **Security:** Never commit `.env` to Git. It's already in `.gitignore`.
 
 ---
 
