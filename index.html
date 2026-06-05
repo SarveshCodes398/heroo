@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SalesCoach AI — Transcript Analyzer</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: DM Serif Display + DM Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['"DM Serif Display"', 'serif'],
+            mono:    ['"DM Mono"', 'monospace'],
+            sans:    ['"DM Sans"', 'sans-serif'],
+          },
+          colors: {
+            ink:     '#0d0f12',
+            surface: '#161a20',
+            panel:   '#1e242d',
+            border:  '#2a3040',
+            muted:   '#4a5568',
+            text:    '#e2e8f0',
+            dim:     '#94a3b8',
+            buy:     { DEFAULT: '#22c55e', dim: '#14532d', text: '#bbf7d0' },
+            obj:     { DEFAULT: '#ef4444', dim: '#450a0a', text: '#fecaca' },
+            con:     { DEFAULT: '#f59e0b', dim: '#451a03', text: '#fde68a' },
+            accent:  '#6366f1',
+          },
+          boxShadow: {
+            'card': '0 0 0 1px rgba(99,102,241,0.08), 0 4px 24px rgba(0,0,0,0.4)',
+            'glow': '0 0 32px rgba(99,102,241,0.15)',
+          },
+          animation: {
+            'fade-up': 'fadeUp 0.5s ease forwards',
+            'pulse-slow': 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite',
+          },
+          keyframes: {
+            fadeUp: {
+              '0%':   { opacity: '0', transform: 'translateY(16px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body { background-color: #0d0f12; }
+
+    /* Noise texture overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      opacity: 0.4;
+    }
+
+    /* Ambient glow */
+    .ambient {
+      position: fixed;
+      width: 700px; height: 700px;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    textarea:focus { outline: none; }
+    textarea { resize: vertical; }
+
+    .card-enter { opacity: 0; transform: translateY(20px); }
+    .card-visible {
+      animation: fadeUp 0.45s ease forwards;
+    }
+
+    /* Stagger delays */
+    .card-visible:nth-child(1) { animation-delay: 0.05s; }
+    .card-visible:nth-child(2) { animation-delay: 0.12s; }
+    .card-visible:nth-child(3) { animation-delay: 0.19s; }
+    .card-visible:nth-child(4) { animation-delay: 0.26s; }
+    .card-visible:nth-child(5) { animation-delay: 0.33s; }
+    .card-visible:nth-child(6) { animation-delay: 0.40s; }
+    .card-visible:nth-child(7) { animation-delay: 0.47s; }
+    .card-visible:nth-child(8) { animation-delay: 0.54s; }
+
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .badge-buy { background: #14532d; color: #86efac; border: 1px solid #16a34a; }
+    .badge-obj { background: #450a0a; color: #fca5a5; border: 1px solid #dc2626; }
+    .badge-con { background: #451a03; color: #fcd34d; border: 1px solid #d97706; }
+
+    .card-accent-buy { border-left: 3px solid #22c55e; }
+    .card-accent-obj { border-left: 3px solid #ef4444; }
+    .card-accent-con { border-left: 3px solid #f59e0b; }
+
+    .quote-bg-buy { background: rgba(34,197,94,0.05);  border-left: 2px solid rgba(34,197,94,0.3); }
+    .quote-bg-obj { background: rgba(239,68,68,0.05);  border-left: 2px solid rgba(239,68,68,0.3); }
+    .quote-bg-con { background: rgba(245,158,11,0.05); border-left: 2px solid rgba(245,158,11,0.3); }
+
+    /* Stat counter */
+    .stat-box { background: #161a20; border: 1px solid #2a3040; }
+
+    .tip-box { background: rgba(99,102,241,0.07); border: 1px solid rgba(99,102,241,0.2); }
+  </style>
+</head>
+<body class="font-sans text-text min-h-screen relative">
+
+  <!-- Ambient glows -->
+  <div class="ambient" style="background:radial-gradient(circle,rgba(99,102,241,0.18) 0%,transparent 70%);top:-200px;left:-200px;"></div>
+  <div class="ambient" style="background:radial-gradient(circle,rgba(34,197,94,0.08) 0%,transparent 70%);bottom:-150px;right:-150px;"></div>
+
+  <div class="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 py-12">
+
+    <!-- ── HEADER ───────────────────────────────────── -->
+    <header class="mb-12 text-center">
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-xs font-mono tracking-widest uppercase mb-5">
+        <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-slow"></span>
+        Powered by Google Gemini
+      </div>
+
+      <h1 class="font-display text-5xl sm:text-6xl text-text mb-3 leading-tight">
+        Sales<span class="italic text-accent">Coach</span> AI
+      </h1>
+      <p class="text-dim text-lg font-light max-w-xl mx-auto">
+        Paste a sales call transcript. Get instant coaching signals — buying interest, objections &amp; confusion — with actionable tips.
+      </p>
+    </header>
+
+    <!-- ── INPUT PANEL ─────────────────────────────── -->
+    <div class="bg-surface border border-border rounded-2xl p-6 mb-8 shadow-card">
+      <label class="block text-xs font-mono text-muted uppercase tracking-widest mb-3">
+        Meeting Transcript
+      </label>
+      <textarea
+        id="transcriptInput"
+        rows="10"
+        placeholder="Paste your sales call transcript here…
+
+Example:
+Prospect: This pricing is higher than what we're used to paying.
+Sales Rep: I totally understand. Let me walk you through the ROI.
+Prospect: Wait, can this integrate with Salesforce? I didn't see that mentioned.
+Prospect: Actually, if it works with our current stack, we'd want to move quickly before Q4."
+        class="w-full bg-panel border border-border rounded-xl p-4 text-text placeholder-muted font-mono text-sm leading-relaxed transition-all duration-200 focus:border-accent/50 focus:shadow-glow"
+      ></textarea>
+
+      <div class="flex items-center justify-between mt-4">
+        <span id="charCount" class="text-xs text-muted font-mono">0 characters</span>
+
+        <button
+          id="analyzeBtn"
+          onclick="analyzeTranscript()"
+          class="inline-flex items-center gap-2.5 px-6 py-3 bg-accent hover:bg-accent/80 active:bg-accent/70 text-white font-semibold rounded-xl transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed select-none"
+        >
+          <svg id="btnIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15M14.25 3.104c.251.023.501.05.75.082M19.8 15a2.25 2.25 0 01.172.975 2.25 2.25 0 01-2.25 2.25H6.75a2.25 2.25 0 01-2.25-2.25c0-.345.07-.674.194-.975M19.8 15H4.2" />
+          </svg>
+          <span id="btnText">Analyze Transcript</span>
+          <div id="spinner" class="spinner hidden"></div>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── ERROR ───────────────────────────────────── -->
+    <div id="errorBox" class="hidden mb-6 p-4 bg-obj-dim border border-obj/40 rounded-xl text-obj-text text-sm font-mono flex items-start gap-3">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+      </svg>
+      <span id="errorMsg"></span>
+    </div>
+
+    <!-- ── STATS BAR ────────────────────────────────── -->
+    <div id="statsBar" class="hidden grid grid-cols-3 gap-3 mb-8">
+      <div class="stat-box rounded-xl p-4 text-center">
+        <div id="statBuy" class="text-3xl font-display text-buy">0</div>
+        <div class="text-xs text-muted mt-1 uppercase tracking-widest font-mono">Buying Signals</div>
+      </div>
+      <div class="stat-box rounded-xl p-4 text-center">
+        <div id="statObj" class="text-3xl font-display text-obj">0</div>
+        <div class="text-xs text-muted mt-1 uppercase tracking-widest font-mono">Objections</div>
+      </div>
+      <div class="stat-box rounded-xl p-4 text-center">
+        <div id="statCon" class="text-3xl font-display text-con">0</div>
+        <div class="text-xs text-muted mt-1 uppercase tracking-widest font-mono">Confusions</div>
+      </div>
+    </div>
+
+    <!-- ── RESULTS GRID ────────────────────────────── -->
+    <div id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+
+    <!-- ── EMPTY STATE ─────────────────────────────── -->
+    <div id="emptyState" class="text-center py-16 text-muted">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-surface border border-border flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+        </svg>
+      </div>
+      <p class="font-mono text-sm">Paste a transcript above and click <strong class="text-text">Analyze</strong> to see signals</p>
+    </div>
+
+    <!-- ── FOOTER ──────────────────────────────────── -->
+    <footer class="mt-16 pt-6 border-t border-border text-center text-xs text-muted font-mono">
+      SalesCoach AI · Built with FastAPI + Google Gemini ·
+      <span class="text-accent">gemini-2.0-flash</span>
+    </footer>
+
+  </div>
+
+  <script>
+    const BACKEND_URL = 'http://127.0.0.1:8000/analyse';
+
+    // Live char counter
+    const textarea = document.getElementById('transcriptInput');
+    const charCount = document.getElementById('charCount');
+    textarea.addEventListener('input', () => {
+      charCount.textContent = `${textarea.value.length.toLocaleString()} characters`;
+    });
+
+    const CONFIG = {
+      buying_interest: {
+        label: 'Buying Interest',
+        badge: 'badge-buy',
+        accent: 'card-accent-buy',
+        quote: 'quote-bg-buy',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>`,
+      },
+      objection: {
+        label: 'Objection',
+        badge: 'badge-obj',
+        accent: 'card-accent-obj',
+        quote: 'quote-bg-obj',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>`,
+      },
+      confusion: {
+        label: 'Confusion',
+        badge: 'badge-con',
+        accent: 'card-accent-con',
+        quote: 'quote-bg-con',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" /></svg>`,
+      },
+    };
+
+    async function analyzeTranscript() {
+      const transcript = textarea.value.trim();
+      if (!transcript) {
+        showError('Please paste a meeting transcript before analyzing.');
+        return;
+      }
+
+      setLoading(true);
+      hideError();
+      clearResults();
+
+      try {
+        const res = await fetch(BACKEND_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transcript }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new Error(err.detail || 'Server error');
+        }
+
+        const data = await res.json();
+        renderResults(data.signals || []);
+
+      } catch (err) {
+        showError(`Error: ${err.message}. Make sure the backend is running at ${BACKEND_URL}`);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function renderResults(signals) {
+      const grid = document.getElementById('resultsGrid');
+      const empty = document.getElementById('emptyState');
+      const statsBar = document.getElementById('statsBar');
+
+      if (!signals.length) {
+        empty.innerHTML = `
+          <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-surface border border-border flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <p class="font-mono text-sm">No signals detected in this transcript.</p>`;
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      empty.classList.add('hidden');
+
+      // Stats
+      const counts = { buying_interest: 0, objection: 0, confusion: 0 };
+      signals.forEach(s => { if (counts[s.type] !== undefined) counts[s.type]++; });
+      document.getElementById('statBuy').textContent = counts.buying_interest;
+      document.getElementById('statObj').textContent = counts.objection;
+      document.getElementById('statCon').textContent = counts.confusion;
+      statsBar.classList.remove('hidden');
+
+      // Cards
+      signals.forEach((signal, i) => {
+        const cfg = CONFIG[signal.type] || CONFIG.confusion;
+        const card = document.createElement('div');
+        card.className = `bg-surface border border-border rounded-2xl p-5 shadow-card card-enter ${cfg.accent}`;
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between mb-4">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold font-mono ${cfg.badge}">
+              ${cfg.icon}
+              ${cfg.label}
+            </span>
+            <span class="text-muted text-xs font-mono">#${String(i + 1).padStart(2, '0')}</span>
+          </div>
+
+          <div class="${cfg.quote} rounded-lg px-4 py-3 mb-4">
+            <p class="text-sm italic text-dim leading-relaxed font-light">"${escapeHtml(signal.quote)}"</p>
+          </div>
+
+          <div class="tip-box rounded-xl px-4 py-3">
+            <div class="flex items-center gap-1.5 text-accent text-xs font-mono font-semibold uppercase tracking-wider mb-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+              </svg>
+              Coaching Tip
+            </div>
+            <p class="text-sm text-text leading-relaxed">${escapeHtml(signal.tip)}</p>
+          </div>
+        `;
+
+        grid.appendChild(card);
+
+        // Trigger enter animation after a tiny delay
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            card.classList.remove('card-enter');
+            card.classList.add('card-visible');
+          });
+        });
+      });
+    }
+
+    function setLoading(loading) {
+      const btn = document.getElementById('analyzeBtn');
+      const icon = document.getElementById('btnIcon');
+      const text = document.getElementById('btnText');
+      const spin = document.getElementById('spinner');
+
+      btn.disabled = loading;
+      icon.classList.toggle('hidden', loading);
+      spin.classList.toggle('hidden', !loading);
+      text.textContent = loading ? 'Analyzing…' : 'Analyze Transcript';
+    }
+
+    function clearResults() {
+      document.getElementById('resultsGrid').innerHTML = '';
+      document.getElementById('statsBar').classList.add('hidden');
+      document.getElementById('emptyState').classList.add('hidden');
+    }
+
+    function showError(msg) {
+      const box = document.getElementById('errorBox');
+      document.getElementById('errorMsg').textContent = msg;
+      box.classList.remove('hidden');
+    }
+
+    function hideError() {
+      document.getElementById('errorBox').classList.add('hidden');
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Allow Ctrl+Enter to submit
+    textarea.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') analyzeTranscript();
+    });
+  </script>
+</body>
+</html>
